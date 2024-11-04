@@ -31,7 +31,7 @@ class Transformer(nn.Module):
         self.dim_v = dim_v
         
         # embeddings 
-        self.word_embedding = nn.Embedding(self.in_size, self.word_embedding_dim)
+        self.word_embedding = self.create_positional_embedding(self.max_len, self.word_embedding_dim)
         self.pos_embedding = nn.Embedding(self.max_len, self.word_embedding_dim)
         self.time_embedding = nn.Embedding(self.max_len, self.word_embedding_dim)
         
@@ -60,6 +60,16 @@ class Transformer(nn.Module):
         self.decoder_attn_blocks = nn.Sequential(*decoder_attn_blocks)
         
         self.final_ff = nn.Linear(self.hidden_size, self.out_size)
+    
+    def create_positional_embedding(self, max_len, embed_dim):
+        position = np.arange(max_len)[:, np.newaxis]  # Shape (max_len, 1)
+        div_term = np.exp(np.arange(0, embed_dim, 2) * -(np.log(10000.0) / embed_dim))  # Shape (embed_dim/2,)
+        
+        pos_embedding = np.zeros((max_len, embed_dim))
+        pos_embedding[:, 0::2] = np.sin(position * div_term)  # Apply sine to even indices
+        pos_embedding[:, 1::2] = np.cos(position * div_term)  # Apply cosine to odd indices
+        
+        return torch.tensor(pos_embedding, dtype=torch.float32)
     
     def encode(self, x):
         source_embedding = self.word_embedding(x)
