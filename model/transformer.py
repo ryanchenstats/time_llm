@@ -31,9 +31,9 @@ class Transformer(nn.Module):
         self.dim_v = dim_v
         
         # embeddings 
-        self.word_embedding = self.create_positional_embedding(self.max_len, self.word_embedding_dim)
-        self.pos_embedding = nn.Embedding(self.max_len, self.word_embedding_dim)
-        self.time_embedding = nn.Embedding(self.max_len, self.word_embedding_dim)
+        self.word_embedding = nn.Embedding(self.in_size, self.word_embedding_dim).to(self.device)   
+        self.pos_embedding = self.create_positional_embedding(self.max_len, self.word_embedding_dim).to(self.device)
+        self.time_embedding = nn.Embedding(self.max_len, self.word_embedding_dim).to(self.device)
         
         # attention blocks 
         encoder_attn_blocks = []
@@ -43,7 +43,7 @@ class Transformer(nn.Module):
                           dim_q=self.dim_q, 
                           dim_k=self.dim_k,
                           dim_v=self.dim_v,
-                          )
+                          device=self.device)
             encoder_attn_blocks.append(block)
             
         decoder_attn_blocks = []
@@ -53,13 +53,13 @@ class Transformer(nn.Module):
                           dim_q=self.dim_q, 
                           dim_k=self.dim_k,
                           dim_v=self.dim_v,
-                          )
+                          device=self.device)
             decoder_attn_blocks.append(block)
             
-        self.encoder_attn_blocks = nn.Sequential(*encoder_attn_blocks)
-        self.decoder_attn_blocks = nn.Sequential(*decoder_attn_blocks)
+        self.encoder_attn_blocks = nn.Sequential(*encoder_attn_blocks).to(self.device)
+        self.decoder_attn_blocks = nn.Sequential(*decoder_attn_blocks).to(self.device)
         
-        self.final_ff = nn.Linear(self.hidden_size, self.out_size)
+        self.final_ff = nn.Linear(self.hidden_size, self.out_size).to(self.device)
     
     def create_positional_embedding(self, max_len, embed_dim):
         position = np.arange(max_len)[:, np.newaxis]  # Shape (max_len, 1)
@@ -69,7 +69,11 @@ class Transformer(nn.Module):
         pos_embedding[:, 0::2] = np.sin(position * div_term)  # Apply sine to even indices
         pos_embedding[:, 1::2] = np.cos(position * div_term)  # Apply cosine to odd indices
         
-        return torch.tensor(pos_embedding, dtype=torch.float32)
+        embedding_layer = nn.Embedding(max_len, embed_dim)
+        embedding_layer.weight.data.copy_(torch.tensor(pos_embedding, dtype=torch.float32))
+        embedding_layer.weight.requires_grad = False  # Make it non-trainable
+        
+        return embedding_layer
     
     def encode(self, x):
         source_embedding = self.word_embedding(x)
@@ -100,7 +104,8 @@ class Block(nn.Module):
                  dim_q: int = 128, 
                  dim_k: int = 128, 
                  dim_v: int = 128, 
-                 dropout: float = 0.1):
+                 dropout: float = 0.1,
+                 device: str = 'cuda'):
         super(Block, self).__init__()
         self.num_heads = num_heads
         self.dim_q = dim_q
@@ -110,14 +115,14 @@ class Block(nn.Module):
         
         # self.qkv = nn.Linear(hidden_size, dim_q + dim_k + dim_v)
         self.dropout = nn.Dropout(dropout)
-        self.attn_proj = nn.Linear(num_heads * dim_v, embedding_size)
+        self.attn_proj = nn.Linear(num_heads * dim_v, embedding_size).to(device)
         self.activation = nn.GELU()
-        self.ln = nn.LayerNorm(embedding_size)
+        self.ln = nn.LayerNorm(embedding_size).to(device)
         self.softmax = nn.Softmax(dim=-1)
         
-        self.qk = nn.Linear(embedding_size, self.num_heads * (self.dim_q + self.dim_k))
-        self.v = nn.Linear(embedding_size, self.num_heads * self.dim_v)
-        self.ff = nn.Linear(embedding_size, embedding_size)
+        self.qk = nn.Linear(embedding_size, self.num_heads * (self.dim_q + self.dim_k)).to(device)
+        self.v = nn.Linear(embedding_size, self.num_heads * self.dim_v).to(device)
+        self.ff = nn.Linear(embedding_size, embedding_size).to(device)
         
     def forward(self, x, encodings=None):
         batch_size, seq_len, _ = x.shape
@@ -153,5 +158,5 @@ class Block(nn.Module):
 
 if __name__ == '__main__':
     t = Transformer()
-    x = torch.randint(0, 12, (1, 10))
+    x = torch.randint(low = 0, high = 12, size = (4, 10)).to('cuda')
     print(t(x).shape)
